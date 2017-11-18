@@ -1,0 +1,372 @@
+#!/usr/bin/env python
+
+from stem import Signal
+from stem.control import Controller
+from geoip import geolite2
+import time, re, requesocks, sys, os, getopt
+
+
+max_attempt = 3 #Max number of attempt to get the right country
+tor_socks_port = os.environ["TOR_SOCKS_PORT"] if "TOR_SOCKS_PORT" in os.environ else 9050
+tor_socks_ip = os.environ["TOR_SOCKS_HOST"] if "TOR_SOCKS_HOST" in os.environ else '127.0.0.1'
+tor_ctrl_port = os.environ["TOR_CONTROL_PORT"] if "TOR_CONTROL_PORT" in os.environ else 9051
+tor_ctrl_ip = os.environ["TOR_CONTROL_HOST"] if "TOR_CONTROL_HOST" in os.environ else '127.0.0.1'
+if "TOR_CONTROL_PASSWD" in os.environ:
+    tor_ctrl_passwd = os.environ["TOR_CONTROL_PASSWD"]
+else:
+    print("error: you need to set your TOR_CONTROL_PASSWD in your env")
+    sys.exit(3)
+
+
+def get_tor_exit_infos():
+    proxy_address = 'socks5://%s:%d' % (tor_socks_ip, tor_socks_port)
+    proxies = {
+        'http': proxy_address,
+        'https': proxy_address
+    }
+    response = requesocks.get("http://httpbin.org/ip", proxies=proxies)
+    ip = re.findall(r'[\d.-]+', response.text)[0]
+    match = geolite2.lookup(ip)
+    if match is not None:
+        return {'ip': ip, 'country': match.country}
+    else:
+        return {'ip': ip, 'country': 'unknown'}
+
+
+def print_usage(filename, print_codes):
+    print("usage: %s [-c <COUNTRY_CODE> | -h | --help]" % os.path.basename(filename))
+    if not print_codes:
+        print("use -h flag to display country codes")
+    else:
+        print("""
+    \033[4mCountry\033[0m                               \033[4mCode\033[0m
+    ASCENSION ISLAND                      AC
+    AFGHANISTAN                           AF
+    ALAND                                 AX
+    ALBANIA                               AL
+    ALGERIA                               DZ
+    ANDORRA                               AD
+    ANGOLA                                AO
+    ANGUILLA                              AI
+    ANTARCTICA                            AQ
+    ANTIGUA AND BARBUDA                   AG
+    ARGENTINA REPUBLIC                    AR
+    ARMENIA                               AM
+    ARUBA                                 AW
+    AUSTRALIA                             AU
+    AUSTRIA                               AT
+    AZERBAIJAN                            AZ
+    BAHAMAS                               BS
+    BAHRAIN                               BH
+    BANGLADESH                            BD
+    BARBADOS                              BB
+    BELARUS                               BY
+    BELGIUM                               BE
+    BELIZE                                BZ
+    BENIN                                 BJ
+    BERMUDA                               BM
+    BHUTAN                                BT
+    BOLIVIA                               BO
+    BOSNIA AND HERZEGOVINA                BA
+    BOTSWANA                              BW
+    BOUVET ISLAND                         BV
+    BRAZIL                                BR
+    BRITISH INDIAN OCEAN TERR             IO
+    BRITISH VIRGIN ISLANDS                VG
+    BRUNEI DARUSSALAM                     BN
+    BULGARIA                              BG
+    BURKINA FASO                          BF
+    BURUNDI                               BI
+    CAMBODIA                              KH
+    CAMEROON                              CM
+    CANADA                                CA
+    CAPE VERDE                            CV
+    CAYMAN ISLANDS                        KY
+    CENTRAL AFRICAN REPUBLIC              CF
+    CHAD                                  TD
+    CHILE                                 CL
+    PEOPLE'S REPUBLIC OF CHINA            CN
+    CHRISTMAS ISLANDS                     CX
+    COCOS ISLANDS                         CC
+    COLOMBIA                              CO
+    COMORAS                               KM
+    CONGO                                 CG
+    CONGO (DEMOCRATIC REPUBLIC)           CD
+    COOK ISLANDS                          CK
+    COSTA RICA                            CR
+    COTE D IVOIRE                         CI
+    CROATIA                               HR
+    CUBA                                  CU
+    CYPRUS                                CY
+    CZECH REPUBLIC                        CZ
+    DENMARK                               DK
+    DJIBOUTI                              DJ
+    DOMINICA                              DM
+    DOMINICAN REPUBLIC                    DO
+    EAST TIMOR                            TP
+    ECUADOR                               EC
+    EGYPT                                 EG
+    EL SALVADOR                           SV
+    EQUATORIAL GUINEA                     GQ
+    ESTONIA                               EE
+    ETHIOPIA                              ET
+    FALKLAND ISLANDS                      FK
+    FAROE ISLANDS                         FO
+    FIJI                                  FJ
+    FINLAND                               FI
+    FRANCE                                FR
+    FRANCE METROPOLITAN                   FX
+    FRENCH GUIANA                         GF
+    FRENCH POLYNESIA                      PF
+    FRENCH SOUTHERN TERRITORIES           TF
+    GABON                                 GA
+    GAMBIA                                GM
+    GEORGIA                               GE
+    GERMANY                               DE
+    GHANA                                 GH
+    GIBRALTER                             GI
+    GREECE                                GR
+    GREENLAND                             GL
+    GRENADA                               GD
+    GUADELOUPE                            GP
+    GUAM                                  GU
+    GUATEMALA                             GT
+    GUINEA                                GN
+    GUINEA-BISSAU                         GW
+    GUYANA                                GY
+    HAITI                                 HT
+    HEARD &amp; MCDONALD ISLAND           HM
+    HONDURAS                              HN
+    HONG KONG                             HK
+    HUNGARY                               HU
+    ICELAND                               IS
+    INDIA                                 IN
+    INDONESIA                             ID
+    IRAN, ISLAMIC REPUBLIC OF             IR
+    IRAQ                                  IQ
+    IRELAND                               IE
+    ISLE OF MAN                           IM
+    ISRAEL                                IL
+    ITALY                                 IT
+    JAMAICA                               JM
+    JAPAN                                 JP
+    JORDAN                                JO
+    KAZAKHSTAN                            KZ
+    KENYA                                 KE
+    KIRIBATI                              KI
+    KOREA, DEM. PEOPLES REP OF            KP
+    KOREA, REPUBLIC OF                    KR
+    KUWAIT                                KW
+    KYRGYZSTAN                            KG
+    LAO PEOPLE'S DEM. REPUBLIC            LA
+    LATVIA                                LV
+    LEBANON                               LB
+    LESOTHO                               LS
+    LIBERIA                               LR
+    LIBYAN ARAB JAMAHIRIYA                LY
+    LIECHTENSTEIN                         LI
+    LITHUANIA                             LT
+    LUXEMBOURG                            LU
+    MACAO                                 MO
+    MACEDONIA                             MK
+    MADAGASCAR                            MG
+    MALAWI                                MW
+    MALAYSIA                              MY
+    MALDIVES                              MV
+    MALI                                  ML
+    MALTA                                 MT
+    MARSHALL ISLANDS                      MH
+    MARTINIQUE                            MQ
+    MAURITANIA                            MR
+    MAURITIUS                             MU
+    MAYOTTE                               YT
+    MEXICO                                MX
+    MICRONESIA                            FM
+    MOLDAVA REPUBLIC OF                   MD
+    MONACO                                MC
+    MONGOLIA                              MN
+    MONTENEGRO                            ME
+    MONTSERRAT                            MS
+    MOROCCO                               MA
+    MOZAMBIQUE                            MZ
+    MYANMAR                               MM
+    NAMIBIA                               NA
+    NAURU                                 NR
+    NEPAL                                 NP
+    NETHERLANDS ANTILLES                  AN
+    NETHERLANDS, THE                      NL
+    NEW CALEDONIA                         NC
+    NEW ZEALAND                           NZ
+    NICARAGUA                             NI
+    NIGER                                 NE
+    NIGERIA                               NG
+    NIUE                                  NU
+    NORFOLK ISLAND                        NF
+    NORTHERN MARIANA ISLANDS              MP
+    NORWAY                                NO
+    OMAN                                  OM
+    PAKISTAN                              PK
+    PALAU                                 PW
+    PALESTINE                             PS
+    PANAMA                                PA
+    PAPUA NEW GUINEA                      PG
+    PARAGUAY                              PY
+    PERU                                  PE
+    PHILIPPINES (REPUBLIC OF THE)         PH
+    PITCAIRN                              PN
+    POLAND                                PL
+    PORTUGAL                              PT
+    PUERTO RICO                           PR
+    QATAR                                 QA
+    REUNION                               RE
+    ROMANIA                               RO
+    RUSSIAN FEDERATION                    RU
+    RWANDA                                RW
+    SAMOA                                 WS
+    SAN MARINO                            SM
+    SAO TOME/PRINCIPE                     ST
+    SAUDI ARABIA                          SA
+    SCOTLAND                              UK
+    SENEGAL                               SN
+    SERBIA                                RS
+    SEYCHELLES                            SC
+    SIERRA LEONE                          SL
+    SINGAPORE                             SG
+    SLOVAKIA                              SK
+    SLOVENIA                              SI
+    SOLOMON ISLANDS                       SB
+    SOMALIA                               SO
+    SOMOA,GILBERT,ELLICE ISLANDS          AS
+    SOUTH AFRICA                          ZA
+    SOUTH GEORGIA, SOUTH SANDWICH ISLANDS GS
+    SOVIET UNION                          SU
+    SPAIN                                 ES
+    SRI LANKA                             LK
+    ST. HELENA                            SH
+    ST. KITTS AND NEVIS                   KN
+    ST. LUCIA                             LC
+    ST. PIERRE AND MIQUELON               PM
+    ST. VINCENT &amp; THE GRENADINES      VC
+    SUDAN                                 SD
+    SURINAME                              SR
+    SVALBARD AND JAN MAYEN                SJ
+    SWAZILAND                             SZ
+    SWEDEN                                SE
+    SWITZERLAND                           CH
+    SYRIAN ARAB REPUBLIC                  SY
+    TAIWAN                                TW
+    TAJIKISTAN                            TJ
+    TANZANIA, UNITED REPUBLIC OF          TZ
+    THAILAND                              TH
+    TOGO                                  TG
+    TOKELAU                               TK
+    TONGA                                 TO
+    TRINIDAD AND TOBAGO                   TT
+    TUNISIA                               TN
+    TURKEY                                TR
+    TURKMENISTAN                          TM
+    TURKS AND CALCOS ISLANDS              TC
+    TUVALU                                TV
+    UGANDA                                UG
+    UKRAINE                               UA
+    UNITED ARAB EMIRATES                  AE
+    UNITED KINGDOM (no new registrations) GB
+    UNITED KINGDOM                        UK
+    UNITED STATES                         US
+    UNITED STATES MINOR OUTL.IS.          UM
+    URUGUAY                               UY
+    UZBEKISTAN                            UZ
+    VANUATU                               VU
+    VATICAN CITY STATE                    VA
+    VENEZUELA                             VE
+    VIET NAM                              VN
+    VIRGIN ISLANDS (USA)                  VI
+    WALLIS AND FUTUNA ISLANDS             WF
+    WESTERN SAHARA                        EH
+    YEMEN                                 YE
+    ZAMBIA                                ZM
+    ZIMBABWE                              ZW
+    """)
+
+def renew_ip(curr_ip, country):
+    with Controller.from_port(address = tor_ctrl_ip, port = tor_ctrl_port) as controller:
+        controller.authenticate(tor_ctrl_passwd)
+        time.sleep(controller.get_newnym_wait() + 1)
+        if country:
+            controller.set_options = {
+                'ExitNodes': '{%s}' % country,
+                'StrictNodes': '1'
+            }
+        controller.signal(Signal.NEWNYM)
+
+    while True:
+        new_infos = get_tor_exit_infos()
+        if curr_ip != new_infos['ip']:
+            return new_infos
+        time.sleep(1)
+
+def get_country_code_param(params):
+    try:
+        opts, args = getopt.getopt(params[1:], "hc:", ["help"])
+    except getopt.GetoptError:
+        print("error: wrong parameters")
+        print_usage(params[0], False)
+        sys.exit(2)
+
+    country_codes = [
+        'AC', 'AF', 'AX', 'AL', 'DZ', 'AD', 'AO', 'AI', 'AQ', 'AG', 'AR', 'AM', 'AW',
+        'AU', 'AT', 'AZ', 'BS', 'BH', 'BD', 'BB', 'BY', 'BE', 'BZ', 'BJ', 'BM', 'BT',
+        'BO', 'BA', 'BW', 'BV', 'BR', 'IO', 'VG', 'BN', 'BG', 'BF', 'BI', 'KH', 'CM',
+        'CA', 'CV', 'KY', 'CF', 'TD', 'CL', 'CN', 'CX', 'CC', 'CO', 'KM', 'CG', 'CD',
+        'CK', 'CR', 'CI', 'HR', 'CU', 'CY', 'CZ', 'DK', 'DJ', 'DM', 'DO', 'TP', 'EC',
+        'EG', 'SV', 'GQ', 'EE', 'ET', 'FK', 'FO', 'FJ', 'FI', 'FR', 'FX', 'GF', 'PF',
+        'TF', 'GA', 'GM', 'GE', 'DE', 'GH', 'GI', 'GR', 'GL', 'GD', 'GP', 'GU', 'GT',
+        'GN', 'GW', 'GY', 'HT', 'HM', 'HN', 'HK', 'HU', 'IS', 'IN', 'ID', 'IR', 'IQ',
+        'IE', 'IM', 'IL', 'IT', 'JM', 'JP', 'JO', 'KZ', 'KE', 'KI', 'KP', 'KR', 'KW',
+        'KG', 'LA', 'LV', 'LB', 'LS', 'LR', 'LY', 'LI', 'LT', 'LU', 'MO', 'MK', 'MG',
+        'MW', 'MY', 'MV', 'ML', 'MT', 'MH', 'MQ', 'MR', 'MU', 'YT', 'MX', 'FM', 'MD',
+        'MC', 'MN', 'ME', 'MS', 'MA', 'MZ', 'MM', 'NA', 'NR', 'NP', 'AN', 'NL', 'NC',
+        'NZ', 'NI', 'NE', 'NG', 'NU', 'NF', 'MP', 'NO', 'OM', 'PK', 'PW', 'PS', 'PA',
+        'PG', 'PY', 'PE', 'PH', 'PN', 'PL', 'PT', 'PR', 'QA', 'RE', 'RO', 'RU', 'RW',
+        'WS', 'SM', 'ST', 'SA', 'UK', 'SN', 'RS', 'SC', 'SL', 'SG', 'SK', 'SI', 'SB',
+        'SO', 'AS', 'ZA', 'GS', 'SU', 'ES', 'LK', 'SH', 'KN', 'LC', 'PM', 'VC', 'SD',
+        'SR', 'SJ', 'SZ', 'SE', 'CH', 'SY', 'TW', 'TJ', 'TZ', 'TH', 'TG', 'TK', 'TO',
+        'TT', 'TN', 'TR', 'TM', 'TC', 'TV', 'UG', 'UA', 'AE', 'GB', 'UK', 'US', 'UM',
+        'UY', 'UZ', 'VU', 'VA', 'VE', 'VN', 'VI', 'WF', 'EH', 'YE', 'ZM', 'ZW'
+    ]
+    for opt, arg in opts:
+        if opt in ("-h", "--help"):
+            print_usage(params[0], True)
+            sys.exit()
+        elif opt == "-c":
+            if arg not in country_codes:
+                print("error: wrong country code")
+                print_usage(params[0], True)
+                sys.exit(1)
+            return arg
+    return ''
+
+
+def main(params):
+    country = get_country_code_param(params)
+    orig_infos = get_tor_exit_infos()
+    print("Old address: %s - Country: %s" % (orig_infos['ip'], orig_infos['country']))
+    new_infos = renew_ip(orig_infos['ip'], country)
+
+    count = 0
+    while True:
+        if country and new_infos['country'] != country:
+            if count == max_attempt:
+                print("   Tor can't find an available exit node in: %s" % country)
+                break
+            count += 1
+            print("   Tor got a wrong exit node country: %s - New attempt #%d (%d max attempts)" % (new_infos['country'], count, max_attempt))
+            new_infos = renew_ip(new_infos['ip'], country)
+        else:
+            break
+
+    print("New address: %s - Country: %s" % (new_infos['ip'], new_infos['country']))
+
+
+if __name__ == '__main__':
+    main(sys.argv)
